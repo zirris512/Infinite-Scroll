@@ -1,9 +1,6 @@
 const imageContainer = document.querySelector("#image-container");
 const loader = document.querySelector("#loader");
 
-let ready = false;
-let imagesLoaded = 0;
-let totalImages = 0;
 let photosArr = [];
 
 // Unsplash API
@@ -11,14 +8,19 @@ const count = 30;
 const apiKey = "";
 const apiUrl = `https://api.unsplash.com/photos/random?count=${count}&client_id=${apiKey}`;
 
-// Check if images were loaded
-function imageLoaded() {
-    imagesLoaded++;
-    if (imagesLoaded === totalImages) {
-        ready = true;
-        loader.hidden = true;
+// Observer options
+const observerOptions = {
+    rootMargin: "-1000px 0px 0px 0px",
+};
+
+// Setup observer to retrieve more photos
+const observer = new IntersectionObserver((entries, observer) => {
+    if (entries[0].isIntersecting) {
+        observer.unobserve(entries[0].target);
+        getPhotos();
     }
-}
+}, observerOptions);
+
 // Helper function to set attributes
 function setAttributes(el, attrs) {
     for (const key in attrs) {
@@ -30,7 +32,7 @@ function displayImages() {
     totalImages = photosArr.length;
     imagesLoaded = 0;
 
-    photosArr.forEach((photo) => {
+    photosArr.forEach((photo, idx) => {
         const item = document.createElement("a");
         setAttributes(item, {
             href: photo.links.html,
@@ -44,7 +46,11 @@ function displayImages() {
             title: photo.alt_description,
         });
 
-        image.addEventListener("load", imageLoaded);
+        // Observe last image created
+        if (idx === count - 1) {
+            image.onload = () => observer.observe(image);
+            loader.hidden = true;
+        }
 
         item.append(image);
         imageContainer.append(item);
@@ -57,28 +63,23 @@ async function getPhotos() {
         const response = await fetch(apiUrl);
 
         if (!response.ok) {
-            const error = new Error(`Could not fetch images: ${response.status}`);
-            error.errors = response.errors;
-            throw error;
+            const apiErrors = await response.json();
+            const errors = new Error(`Could not fetch images: status ${response.status}`);
+            errors.errors = apiErrors.errors;
+            throw errors;
         }
         photosArr = await response.json();
         displayImages();
     } catch (err) {
         if (err instanceof Error) {
-            console.error(
-                err.message,
-                err.errors.map((errorMsg) => `${errorMsg}, `)
-            );
+            console.error(err.message);
+            console.error(...err.errors);
         }
+        const errorEl = document.createElement("h2");
+        errorEl.textContent = "Unable to load images";
+        imageContainer.append(errorEl);
+        loader.hidden = true;
     }
 }
-
-// Check if scrolling near the bottom, Load more photos
-window.addEventListener("scroll", (e) => {
-    if (innerHeight + scrollY >= document.body.offsetHeight - 1000 && ready) {
-        ready = false;
-        getPhotos();
-    }
-});
 
 getPhotos();
